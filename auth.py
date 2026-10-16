@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -52,3 +53,12 @@ class TokenService:
             return None
 
         return user_id
+
+
+# Общий объект для всех view-функций: from auth import token_service
+# JWT_SECRET читается из окружения, поэтому load_dotenv() должен быть вызван до импорта auth.py
+token_service = TokenService(
+    secret_key=os.environ["JWT_SECRET"],
+    algorithm="HS256",
+    lifetime_seconds=3600,
+)
