@@ -8,6 +8,8 @@ class User(models.Model):
     login = models.CharField(max_length=255, unique=True, db_column="login")
     password = models.CharField(max_length=255, db_column="password")
     created_at = models.DateTimeField(db_default=Now(), db_column="created_at")
+    last_login_at = models.DateTimeField(null=True, default=None, db_column="last_login_at")
+    last_message_at = models.DateTimeField(null=True, default=None, db_column="last_message_at")
     # objects: none
 
     class Meta:
@@ -19,11 +21,12 @@ class User(models.Model):
 class Topic(models.Model):
     # fields
     topic_id = models.AutoField(primary_key=True, db_column="topic_id")
-    title = models.CharField(max_length=255, db_column="title")    
+    title = models.CharField(max_length=255, db_column="title")
     created_at = models.DateTimeField(db_default=Now(), db_column="created_at")
+    last_update_at = models.DateTimeField(null=True, default=None, db_column="last_update_at")
     # objects
     created_by_user = models.ForeignKey(User, to_field="user_id", on_delete=models.PROTECT, db_column="created_by_user_id")
-    
+
     class Meta:
         db_table = "topics"
         managed = False
@@ -33,9 +36,10 @@ class Topic(models.Model):
 class Message(models.Model):
     # fields
     message_id = models.AutoField(primary_key=True, db_column="message_id")
-    text = models.TextField(db_column="text")
+    t = models.TextField(db_column="t")
     created_at = models.DateTimeField(db_default=Now(), db_column="created_at")
     # objects
+    parent_message = models.ForeignKey("self", to_field="message_id", null=True, default=None, on_delete=models.CASCADE, db_column="parent_message_id")
     topic = models.ForeignKey(Topic, to_field="topic_id", on_delete=models.CASCADE, db_column="topic_id")
     user = models.ForeignKey(User, to_field="user_id", on_delete=models.PROTECT, db_column="user_id")
 
