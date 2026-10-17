@@ -38,17 +38,21 @@ django.setup()
 # View-функции импортируются только после django.setup()
 from views.users import get_users, create_new_user, login, logout
 from views.topics import get_topics, create_new_topic
-from views.messages import messages, create_new_message
+from views.messages import messages, create_new_message, delete_existing_message
 
 urlpatterns = [
-    path("api/topics", get_topics),
+    # users    
     path("api/users", get_users),
+    path("api/create_new_user", create_new_user),
     path("api/login", login),
     path("api/logout", logout),
+    # topics
+    path("api/topics", get_topics),
     path("api/create_new_topic", create_new_topic),
-    path("api/create_new_user", create_new_user),
+    # messages
     path("api/messages", messages),
     path("api/create_new_message", create_new_message),
+    path("api/delete_existing_message", delete_existing_message),
 ]
 
 execute_from_command_line(sys.argv)
