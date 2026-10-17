@@ -4,7 +4,13 @@ from django.http import JsonResponse
 from auth import token_service
 from orm import User
 from password_helper import hash_password, is_password_correct
-from request_check_helper import check_method, get_required_non_empty_string, read_json_object
+from request_check_helper import (
+    check_method,
+    get_required_email,
+    get_required_login,
+    get_required_non_empty_string,
+    read_json_object,
+)
 
 def get_users(request):
     data = list(
@@ -14,9 +20,9 @@ def get_users(request):
     )
     return JsonResponse(data, safe=False)
 
+# Ожидает POST с JSON-телом: {"login": "...", "email": "...", "password": "..."}
+# Создаёт пользователя и возвращает токен, login и email
 def create_new_user(request):
-    # Ожидает POST с JSON-телом: {"login": "...", "email": "...", "password": "..."}
-    # Создаёт пользователя и возвращает токен, login и email
     error = check_method(request, "POST")
     if error is not None:
         return error
@@ -26,11 +32,12 @@ def create_new_user(request):
         return error
 
     # Префикс user_ - чтобы переменная не перекрывала функцию login из этого же файла
-    user_login, error = get_required_non_empty_string(body, "login")
+    # login - только латинские буквы и цифры, email - формат адреса (правила в request_check_helper)
+    user_login, error = get_required_login(body, "login")
     if error is not None:
         return error
 
-    user_email, error = get_required_non_empty_string(body, "email")
+    user_email, error = get_required_email(body, "email")
     if error is not None:
         return error
 
@@ -63,8 +70,8 @@ def create_new_user(request):
     }
     return JsonResponse(data, status=200)
 
+# Ожидает POST с JSON-телом: {"login": "...", "password": "..."}
 def login(request):
-    # Ожидает POST с JSON-телом: {"login": "...", "password": "..."}
     error = check_method(request, "POST")
     if error is not None:
         return error
@@ -105,10 +112,10 @@ def login(request):
     }
     return JsonResponse(data, status=200)
 
+# Ожидает POST без тела. Всегда отвечает 200.
+# Сервер токены не хранит и отозвать их не может: клиент сам удаляет токен у себя,
+# а сам токен перестанет действовать, когда истечёт его exp.
 def logout(request):
-    # Ожидает POST без тела. Всегда отвечает 200.
-    # Сервер токены не хранит и отозвать их не может: клиент сам удаляет токен у себя,
-    # а сам токен перестанет действовать, когда истечёт его exp.
     error = check_method(request, "POST")
     if error is not None:
         return error

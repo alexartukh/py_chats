@@ -15,13 +15,11 @@ from django.contrib.auth.hashers import check_password, make_password
 
 PASSWORD_HASHER = "pbkdf2_sha256"
 
-
+# Возвращает хеш пароля для сохранения в users.password
 def hash_password(password):
-    # Возвращает хеш пароля для сохранения в users.password
     return make_password(password, hasher=PASSWORD_HASHER)
 
-
+# True, если password подходит к хешу из users.password, иначе False.
+# Если в БД лежит не хеш, а старый открытый пароль (например, "123"), вернётся False.
 def is_password_correct(password, password_hash):
-    # True, если password подходит к хешу из users.password, иначе False.
-    # Если в БД лежит не хеш, а старый открытый пароль (например, "123"), вернётся False.
     return check_password(password, password_hash)

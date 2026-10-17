@@ -25,9 +25,9 @@ class TokenService:
         }
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 
+    # Выбрасывает jwt.ExpiredSignatureError, если срок истёк,
+    # и jwt.InvalidTokenError, если токен подделан или повреждён
     def get_user_id(self, token: str) -> int:
-        # Выбрасывает jwt.ExpiredSignatureError, если срок истёк,
-        # и jwt.InvalidTokenError, если токен подделан или повреждён
         payload = jwt.decode(
             token,
             self.secret_key,
@@ -36,9 +36,9 @@ class TokenService:
         )
         return int(payload["sub"])
 
+    # Берёт токен из заголовка "Authorization: Bearer <token>"
+    # Возвращает user_id или None, если токена нет, он недействителен или пользователя уже нет в БД
     def get_user_id_from_request(self, request) -> int | None:
-        # Берёт токен из заголовка "Authorization: Bearer <token>"
-        # Возвращает user_id или None, если токена нет, он недействителен или пользователя уже нет в БД
         header = request.headers.get("Authorization", "")
         if not header.startswith("Bearer "):
             return None

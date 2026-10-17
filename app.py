@@ -74,6 +74,7 @@ django.setup()
 from views.users import get_users, create_new_user, login, logout
 from views.topics import get_topics, create_new_topic, get_topic
 from views.messages import messages, create_new_message, delete_existing_message, get_all_root_messages
+from CAPTCHA import get_captcha
 
 urlpatterns = [
     # users    
@@ -90,6 +91,8 @@ urlpatterns = [
     path("api/create_new_message", create_new_message),
     path("api/delete_existing_message", delete_existing_message),
     path("api/get_all_root_messages", get_all_root_messages),
+    # captcha
+    path("api/captcha", get_captcha),
 ]
 
 execute_from_command_line(sys.argv)

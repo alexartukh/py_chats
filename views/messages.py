@@ -3,13 +3,19 @@ import binascii
 
 from django.http import JsonResponse
 
+from CAPTCHA import check_captcha
 from orm import Message, Topic, User
 from request_check_helper import (
     check_method,
     get_authorized_user_id,
+    get_client_ip,
+    get_optional_site,
     get_query_positive_int,
+    get_user_agent,
+    get_required_email,
     get_required_int,
     get_required_int_or_null,
+    get_required_login,
     get_required_non_empty_string,
     get_required_message_text,
     get_required_non_empty_string_or_null,
@@ -79,10 +85,11 @@ def decode_attachment(attachment_base64, attachment_name):
 # У каждого сообщения: attachment - файл строкой base64 или null, attachment_name - имя файла или null.
 # Возвращает сообщения темы в порядке дерева:
 # сообщение, сразу за ним все его ответы (рекурсивно), затем следующее сообщение того же уровня.
-# Сообщения одного уровня идут от старых к новым.
+# Сообщения одного уровня идут от новых к старым (LIFO, по ТЗ).
 #
 # Пейджер: from и to - номера сообщений (с 1, включительно) среди ВСЕХ сообщений темы,
-# упорядоченных по created_at, затем message_id. Без from и to - все сообщения.
+# упорядоченных от новых к старым: по created_at по убыванию, затем message_id по убыванию.
+# from=1 - самое новое сообщение темы. Без from и to - все сообщения.
 # Ответ, у которого родитель не попал в диапазон, становится корнем страницы:
 # его parent_message_id остаётся прежним, а depth - настоящая глубина в дереве темы.
 def messages(request):
@@ -130,7 +137,8 @@ def messages(request):
     queryset = (
         Message.objects
         .filter(topic_id=topic_id)
-        .order_by("created_at", "message_id")
+        # "-" перед именем поля - сортировка по убыванию (ORDER BY ... DESC): новые первыми
+        .order_by("-created_at", "-message_id")
     )
 
     # Срез Django превращается в SQL: OFFSET (from - 1) LIMIT (to - from + 1)
@@ -166,7 +174,7 @@ def messages(request):
     # Раскладываем записи по дереву: корни страницы отдельно,
     # ответы - в списки по message_id родителя.
     # Корень страницы - сообщение без родителя или с родителем, который не попал на страницу.
-    # Списки сохраняют порядок из запроса (от старых к новым).
+    # Списки сохраняют порядок из запроса (от новых к старым).
     roots = []
     children_by_parent_id = {}
     for row in rows:
@@ -213,9 +221,15 @@ def messages(request):
 # Защищённый endpoint: нужен заголовок "Authorization: Bearer <token>", автор берётся из токена
 # Ожидает POST с JSON-телом:
 # {"login": "...", "email": "...", "topic_id": 1, "parent_message_id": null, "t": "...",
-#  "attachment": "<base64>" | null, "attachment_name": "photo.png" | null}
+#  "attachment": "<base64>" | null, "attachment_name": "photo.png" | null,
+#  "site": "https://..." | null, "captcha_id": "<uuid из GET /api/captcha>", "captcha": "123"}
 # parent_message_id: null - корневое сообщение, число - ответ на это сообщение
+# captcha_id и captcha обязательны. CAPTCHA проверяется после проверки формата всех полей и сразу
+# становится использованной, даже если дальше запрос отклонится (403, 404 и т.д.) - тогда клиенту
+# нужно запросить новую CAPTCHA.
 # attachment и attachment_name: оба null - без файла, обе строки - файл (проверки в decode_attachment)
+# site - Home page из формы, необязательное: поля может не быть, null или "" - сайт не указан
+# IP и User-Agent клиент не присылает: сервер берёт их из самого запроса (get_client_ip, get_user_agent)
 def create_new_message(request):
     error = check_method(request, "POST")
     if error is not None:
@@ -229,11 +243,12 @@ def create_new_message(request):
     if error is not None:
         return error
 
-    user_login, error = get_required_non_empty_string(body, "login")
+    # login - только латинские буквы и цифры, email - формат адреса (правила в request_check_helper)
+    user_login, error = get_required_login(body, "login")
     if error is not None:
         return error
 
-    user_email, error = get_required_non_empty_string(body, "email")
+    user_email, error = get_required_email(body, "email")
     if error is not None:
         return error
 
@@ -262,6 +277,25 @@ def create_new_message(request):
     if error is not None:
         return error
 
+    site, error = get_optional_site(body, "site")
+    if error is not None:
+        return error
+
+    captcha_id, error = get_required_non_empty_string(body, "captcha_id")
+    if error is not None:
+        return error
+
+    captcha_answer, error = get_required_non_empty_string(body, "captcha")
+    if error is not None:
+        return error
+
+    error = check_captcha(captcha_id, captcha_answer)
+    if error is not None:
+        return error
+
+    ip = get_client_ip(request)
+    user_agent = get_user_agent(request)
+
     # login и email из формы должны принадлежать тому же пользователю, что и токен
     if not User.objects.filter(user_id=user_id, login=user_login, email=user_email).exists():
         return JsonResponse({"error": "login and email do not match the token"}, status=403)
@@ -289,6 +323,9 @@ def create_new_message(request):
         t=t,
         attachment=attachment_bytes,
         attachment_name=attachment_name,
+        ip=ip,
+        user_agent=user_agent,
+        site=site,
     )
 
     # Сам файл в ответ не кладётся, только его имя
@@ -373,6 +410,7 @@ def get_all_root_messages(request):
             "attachment_name",
             "user_id",
             "user__login",
+            "user__email",
             "created_at",
         )
     )

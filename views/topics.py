@@ -18,9 +18,9 @@ def get_topics(request):
     )
     return JsonResponse(data, safe=False)
 
+# Защищённый endpoint: нужен заголовок "Authorization: Bearer <token>"
+# Ожидает POST с JSON-телом: {"title": "..."}
 def create_new_topic(request):
-    # Защищённый endpoint: нужен заголовок "Authorization: Bearer <token>"
-    # Ожидает POST с JSON-телом: {"title": "..."}
     error = check_method(request, "POST")
     if error is not None:
         return error
@@ -47,9 +47,9 @@ def create_new_topic(request):
     }
     return JsonResponse(data, status=200)
 
+# Открытый endpoint: GET /api/topic?topic_id=<id>
+# Возвращает одну тему: {"topic_id", "title", "created_by_user__login", "created_at"}
 def get_topic(request):
-    # Открытый endpoint: GET /api/topic?topic_id=<id>
-    # Возвращает одну тему: {"topic_id", "title", "created_by_user__login", "created_at"}
     error = check_method(request, "GET")
     if error is not None:
         return error
