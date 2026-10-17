@@ -17,11 +17,46 @@ class OrmConfig(AppConfig):
 load_dotenv()
 db_url = urlparse(os.environ["DATABASE_URL"])
 
+# DJANGO_DEBUG в .env: строго "true" или "false", любое другое значение - ошибка запуска
+debug_value = os.environ["DJANGO_DEBUG"]
+if debug_value == "true":
+    debug = True
+elif debug_value == "false":
+    debug = False
+else:
+    raise ValueError('DJANGO_DEBUG must be "true" or "false", got: ' + debug_value)
+
+# DJANGO_ALLOWED_HOSTS в .env: адреса через запятую, например "localhost,127.0.0.1".
+# Django проверяет этот список при вызове request.get_host(), его вызывает CommonMiddleware (см. MIDDLEWARE).
+# Запрос к адресу не из списка получает 400.
+allowed_hosts = []
+for host in os.environ["DJANGO_ALLOWED_HOSTS"].split(","):
+    if host.strip() != "":
+        allowed_hosts.append(host.strip())
+
 settings.configure(
-    DEBUG=True,
+    DEBUG=debug,
+    ALLOWED_HOSTS=allowed_hosts,
     ROOT_URLCONF=__name__,
-    SECRET_KEY="dev",
-    INSTALLED_APPS=["__main__.OrmConfig"],
+    SECRET_KEY=os.environ["DJANGO_SECRET_KEY"],
+    INSTALLED_APPS=["__main__.OrmConfig", "corsheaders"],
+    # Порядок важен: middleware выполняются сверху вниз для запроса и снизу вверх для ответа.
+    # CorsMiddleware - пакет django-cors-headers. Сама добавляет заголовки Access-Control-*
+    #   ко всем ответам и сама отвечает на предварительные запросы OPTIONS от браузера.
+    #   По документации пакета должна стоять выше CommonMiddleware.
+    # CommonMiddleware - проверяет Host запроса по ALLOWED_HOSTS (иначе 400).
+    #   Её остальные действия выключены явно ниже: APPEND_SLASH и PREPEND_WWW.
+    MIDDLEWARE=[
+        "corsheaders.middleware.CorsMiddleware",
+        "django.middleware.common.CommonMiddleware",
+    ],
+    # Не дописывать "/" в конец адреса и не перенаправлять на него (у нас адреса без "/")
+    APPEND_SLASH=False,
+    # Не перенаправлять на адрес с "www."
+    PREPEND_WWW=False,
+    CORS_ALLOW_ALL_ORIGINS=True,
+    CORS_ALLOW_METHODS=["GET", "POST", "OPTIONS"],
+    CORS_ALLOW_HEADERS=["authorization", "content-type"],
     DATABASES={
         "default": {
             "ENGINE": "django.db.backends.postgresql",

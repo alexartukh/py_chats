@@ -1,10 +1,10 @@
-import json
-
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 
 from auth import token_service
 from orm import User
+from password_helper import hash_password, is_password_correct
+from request_check_helper import check_method, get_required_non_empty_string, read_json_object
 
 def get_users(request):
     data = list(
@@ -17,30 +17,26 @@ def get_users(request):
 def create_new_user(request):
     # Ожидает POST с JSON-телом: {"login": "...", "email": "...", "password": "..."}
     # Создаёт пользователя и возвращает токен, login и email
-    if request.method != "POST":
-        return JsonResponse({"error": "method not allowed"}, status=405)
+    error = check_method(request, "POST")
+    if error is not None:
+        return error
 
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "invalid json"}, status=400)
-
-    if not isinstance(body, dict) or "login" not in body or "email" not in body or "password" not in body:
-        return JsonResponse({"error": "login, email and password are required"}, status=400)
+    body, error = read_json_object(request)
+    if error is not None:
+        return error
 
     # Префикс user_ - чтобы переменная не перекрывала функцию login из этого же файла
-    user_login = body["login"]
-    user_email = body["email"]
-    user_password = body["password"]
+    user_login, error = get_required_non_empty_string(body, "login")
+    if error is not None:
+        return error
 
-    if not isinstance(user_login, str) or user_login == "":
-        return JsonResponse({"error": "login must be a non-empty string"}, status=400)
+    user_email, error = get_required_non_empty_string(body, "email")
+    if error is not None:
+        return error
 
-    if not isinstance(user_email, str) or user_email == "":
-        return JsonResponse({"error": "email must be a non-empty string"}, status=400)
-
-    if not isinstance(user_password, str) or user_password == "":
-        return JsonResponse({"error": "password must be a non-empty string"}, status=400)
+    user_password, error = get_required_non_empty_string(body, "password")
+    if error is not None:
+        return error
 
     # Отдельные проверки, чтобы клиент знал, что именно занято
     if User.objects.filter(login=user_login).exists():
@@ -49,10 +45,11 @@ def create_new_user(request):
     if User.objects.filter(email=user_email).exists():
         return JsonResponse({"error": "email already exists"}, status=409)
 
-    # Пароль сохраняется открытым текстом, как и у существующих пользователей
+    # В БД сохраняется не пароль, а его хеш
+    password_hash = hash_password(user_password)
     try:
         with transaction.atomic():
-            user = User.objects.create(login=user_login, email=user_email, password=user_password)
+            user = User.objects.create(login=user_login, email=user_email, password=password_hash)
     except IntegrityError:
         # Сработало ограничение UNIQUE на users.login или users.email:
         # кто-то занял логин или email между проверками выше и вставкой
@@ -68,25 +65,35 @@ def create_new_user(request):
 
 def login(request):
     # Ожидает POST с JSON-телом: {"login": "...", "password": "..."}
-    if request.method != "POST":
-        return JsonResponse({"error": "method not allowed"}, status=405)
+    error = check_method(request, "POST")
+    if error is not None:
+        return error
 
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "invalid json"}, status=400)
+    body, error = read_json_object(request)
+    if error is not None:
+        return error
 
-    if not isinstance(body, dict) or "login" not in body or "password" not in body:
-        return JsonResponse({"error": "login and password are required"}, status=400)
+    user_login, error = get_required_non_empty_string(body, "login")
+    if error is not None:
+        return error
 
-    # Пароли в БД хранятся открытым текстом, поэтому сравниваются напрямую
+    user_password, error = get_required_non_empty_string(body, "password")
+    if error is not None:
+        return error
+
+    # Ищем пользователя только по логину: в БД лежит хеш, сравнить его с паролем в SQL нельзя
     user = (
         User.objects
-        .filter(login=body["login"], password=body["password"])
-        .values("user_id", "login", "email")
+        .filter(login=user_login)
+        .values("user_id", "login", "email", "password")
         .first()
     )
     if user is None:
+        return JsonResponse({"error": "invalid login or password"}, status=401)
+
+    # Одинаковый текст ошибки для "нет такого логина" и "неверный пароль",
+    # чтобы по ответу нельзя было узнать, существует ли логин
+    if not is_password_correct(user_password, user["password"]):
         return JsonResponse({"error": "invalid login or password"}, status=401)
 
     # Ответ такой же, как после регистрации (create_new_user)
@@ -99,4 +106,11 @@ def login(request):
     return JsonResponse(data, status=200)
 
 def logout(request):
-    pass
+    # Ожидает POST без тела. Всегда отвечает 200.
+    # Сервер токены не хранит и отозвать их не может: клиент сам удаляет токен у себя,
+    # а сам токен перестанет действовать, когда истечёт его exp.
+    error = check_method(request, "POST")
+    if error is not None:
+        return error
+
+    return JsonResponse({"status": "ok"}, status=200)

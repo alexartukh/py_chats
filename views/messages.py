@@ -1,9 +1,15 @@
-import json
-
 from django.http import JsonResponse
 
-from auth import token_service
-from orm import Message, Topic
+from orm import Message, Topic, User
+from request_check_helper import (
+    check_method,
+    get_authorized_user_id,
+    get_query_positive_int,
+    get_required_int,
+    get_required_int_or_null,
+    get_required_non_empty_string,
+    read_json_object,
+)
 
 
 def messages(request):
@@ -11,20 +17,21 @@ def messages(request):
     # Возвращает все сообщения темы в порядке дерева:
     # сообщение, сразу за ним все его ответы (рекурсивно), затем следующее сообщение того же уровня.
     # Сообщения одного уровня идут от старых к новым.
-    if request.method != "GET":
-        return JsonResponse({"error": "method not allowed"}, status=405)
+    error = check_method(request, "GET")
+    if error is not None:
+        return error
 
-    topic_id = request.GET.get("topic_id", "")
-    if not topic_id.isdigit():
-        return JsonResponse({"error": "topic_id must be a positive integer"}, status=400)
+    topic_id, error = get_query_positive_int(request, "topic_id")
+    if error is not None:
+        return error
 
-    if not Topic.objects.filter(topic_id=int(topic_id)).exists():
+    if not Topic.objects.filter(topic_id=topic_id).exists():
         return JsonResponse({"error": "topic not found"}, status=404)
 
     # неструктурированный ответ
     rows = list(
         Message.objects
-        .filter(topic_id=int(topic_id))
+        .filter(topic_id=topic_id)
         .order_by("created_at", "message_id")
         .values("message_id", "parent_message_id", "t", "user_id", "user__login", "created_at")
     )
@@ -65,47 +72,41 @@ def create_new_message(request):
     # Ожидает POST с JSON-телом:
     # {"login": "...", "email": "...", "topic_id": 1, "parent_message_id": null, "t": "..."}
     # parent_message_id: null - корневое сообщение, число - ответ на это сообщение
-    if request.method != "POST":
-        return JsonResponse({"error": "method not allowed"}, status=405)
+    error = check_method(request, "POST")
+    if error is not None:
+        return error
 
-    user_id = token_service.get_user_id_from_request(request)
-    if user_id is None:
-        return JsonResponse({"error": "unauthorized"}, status=401)
+    user_id, error = get_authorized_user_id(request)
+    if error is not None:
+        return error
 
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "invalid json"}, status=400)
+    body, error = read_json_object(request)
+    if error is not None:
+        return error
 
-    if not isinstance(body, dict):
-        return JsonResponse({"error": "body must be a json object"}, status=400)
+    user_login, error = get_required_non_empty_string(body, "login")
+    if error is not None:
+        return error
 
-    for key in ("login", "email", "topic_id", "parent_message_id", "t"):
-        if key not in body:
-            return JsonResponse({"error": key + " is required"}, status=400)
+    user_email, error = get_required_non_empty_string(body, "email")
+    if error is not None:
+        return error
 
-    user_login = body["login"]
-    user_email = body["email"]
-    topic_id = body["topic_id"]
-    parent_message_id = body["parent_message_id"]
-    t = body["t"]
+    topic_id, error = get_required_int(body, "topic_id")
+    if error is not None:
+        return error
 
-    if not isinstance(user_login, str) or user_login == "":
-        return JsonResponse({"error": "login must be a non-empty string"}, status=400)
+    parent_message_id, error = get_required_int_or_null(body, "parent_message_id")
+    if error is not None:
+        return error
 
-    if not isinstance(user_email, str) or user_email == "":
-        return JsonResponse({"error": "email must be a non-empty string"}, status=400)
+    t, error = get_required_non_empty_string(body, "t")
+    if error is not None:
+        return error
 
-    # bool в Python - подвид int (True == 1), поэтому исключаем его явно
-    if not isinstance(topic_id, int) or isinstance(topic_id, bool):
-        return JsonResponse({"error": "topic_id must be an integer"}, status=400)
-
-    if parent_message_id is not None:
-        if not isinstance(parent_message_id, int) or isinstance(parent_message_id, bool):
-            return JsonResponse({"error": "parent_message_id must be an integer or null"}, status=400)
-
-    if not isinstance(t, str) or t == "":
-        return JsonResponse({"error": "t must be a non-empty string"}, status=400)
+    # login и email из формы должны принадлежать тому же пользователю, что и токен
+    if not User.objects.filter(user_id=user_id, login=user_login, email=user_email).exists():
+        return JsonResponse({"error": "login and email do not match the token"}, status=403)
 
     if not Topic.objects.filter(topic_id=topic_id).exists():
         return JsonResponse({"error": "topic not found"}, status=404)
@@ -145,26 +146,21 @@ def delete_existing_message(request):
     # Ожидает POST с JSON-телом: {"message_id": 1}
     # Удалить можно только своё сообщение. Вместе с ним удаляются все ответы на него на любую глубину,
     # в том числе ответы других пользователей (on_delete=CASCADE у Message.parent_message).
-    if request.method != "POST":
-        return JsonResponse({"error": "method not allowed"}, status=405)
+    error = check_method(request, "POST")
+    if error is not None:
+        return error
 
-    user_id = token_service.get_user_id_from_request(request)
-    if user_id is None:
-        return JsonResponse({"error": "unauthorized"}, status=401)
+    user_id, error = get_authorized_user_id(request)
+    if error is not None:
+        return error
 
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "invalid json"}, status=400)
+    body, error = read_json_object(request)
+    if error is not None:
+        return error
 
-    if not isinstance(body, dict) or "message_id" not in body:
-        return JsonResponse({"error": "message_id is required"}, status=400)
-
-    message_id = body["message_id"]
-
-    # bool в Python - подвид int (True == 1), поэтому исключаем его явно
-    if not isinstance(message_id, int) or isinstance(message_id, bool):
-        return JsonResponse({"error": "message_id must be an integer"}, status=400)
+    message_id, error = get_required_int(body, "message_id")
+    if error is not None:
+        return error
 
     message = (
         Message.objects

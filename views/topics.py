@@ -1,9 +1,7 @@
-import json
-
 from django.http import JsonResponse
 
-from auth import token_service
 from orm import Topic
+from request_check_helper import check_method, get_authorized_user_id, get_required_non_empty_string, read_json_object
 
 
 def get_topics(request):
@@ -17,22 +15,23 @@ def get_topics(request):
 def create_new_topic(request):
     # Защищённый endpoint: нужен заголовок "Authorization: Bearer <token>"
     # Ожидает POST с JSON-телом: {"title": "..."}
-    if request.method != "POST":
-        return JsonResponse({"error": "method not allowed"}, status=405)
+    error = check_method(request, "POST")
+    if error is not None:
+        return error
 
-    user_id = token_service.get_user_id_from_request(request)
-    if user_id is None:
-        return JsonResponse({"error": "unauthorized"}, status=401)
+    user_id, error = get_authorized_user_id(request)
+    if error is not None:
+        return error
 
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "invalid json"}, status=400)
+    body, error = read_json_object(request)
+    if error is not None:
+        return error
 
-    if not isinstance(body, dict) or not isinstance(body.get("title"), str) or body["title"] == "":
-        return JsonResponse({"error": "title must be a non-empty string"}, status=400)
+    title, error = get_required_non_empty_string(body, "title")
+    if error is not None:
+        return error
 
-    topic = Topic.objects.create(title=body["title"], created_by_user_id=user_id)
+    topic = Topic.objects.create(title=title, created_by_user_id=user_id)
 
     data = {
         "topic_id": topic.topic_id,

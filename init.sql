@@ -7,9 +7,9 @@ CREATE TABLE users (
     last_login_at TIMESTAMPTZ NULL DEFAULT NULL,
     last_message_at TIMESTAMPTZ NULL DEFAULT NULL
 );
-INSERT INTO users (login, email, password) VALUES ('test', 'test@example.com', '123');
-INSERT INTO users (login, email, password) VALUES ('alex', 'alex@example.com', '123');
-INSERT INTO users (login, email, password) VALUES ('denis', 'denis@example.com', '123');
+INSERT INTO users (login, email, password) VALUES ('test',  'test@example.com',  'pbkdf2_sha256$1500000$6fPt5amOHa7gBtGATltxYQ$tiQkYEZSS2dspFETSFESKZGL2OEXyAUsobtRo78e8/I=');
+INSERT INTO users (login, email, password) VALUES ('alex',  'alex@example.com',  'pbkdf2_sha256$1500000$6fPt5amOHa7gBtGATltxYQ$tiQkYEZSS2dspFETSFESKZGL2OEXyAUsobtRo78e8/I=');
+INSERT INTO users (login, email, password) VALUES ('denis', 'denis@example.com', 'pbkdf2_sha256$1500000$6fPt5amOHa7gBtGATltxYQ$tiQkYEZSS2dspFETSFESKZGL2OEXyAUsobtRo78e8/I=');
 
 CREATE TABLE topics (
     topic_id         INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
