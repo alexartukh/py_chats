@@ -72,7 +72,7 @@ django.setup()
 
 # View-функции импортируются только после django.setup()
 from views.users import get_users, create_new_user, login, logout
-from views.topics import get_topics, create_new_topic
+from views.topics import get_topics, create_new_topic, get_topic
 from views.messages import messages, create_new_message, delete_existing_message
 
 urlpatterns = [
@@ -84,6 +84,7 @@ urlpatterns = [
     # topics
     path("api/topics", get_topics),
     path("api/create_new_topic", create_new_topic),
+    path("api/topic", get_topic),
     # messages
     path("api/messages", messages),
     path("api/create_new_message", create_new_message),

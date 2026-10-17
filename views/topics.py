@@ -1,7 +1,13 @@
 from django.http import JsonResponse
 
 from orm import Topic
-from request_check_helper import check_method, get_authorized_user_id, get_required_non_empty_string, read_json_object
+from request_check_helper import (
+    check_method,
+    get_authorized_user_id,
+    get_query_positive_int,
+    get_required_non_empty_string,
+    read_json_object,
+)
 
 
 def get_topics(request):
@@ -40,3 +46,25 @@ def create_new_topic(request):
         "created_at": topic.created_at,
     }
     return JsonResponse(data, status=200)
+
+def get_topic(request):
+    # Открытый endpoint: GET /api/topic?topic_id=<id>
+    # Возвращает одну тему: {"topic_id", "title", "created_by_user__login", "created_at"}
+    error = check_method(request, "GET")
+    if error is not None:
+        return error
+
+    topic_id, error = get_query_positive_int(request, "topic_id")
+    if error is not None:
+        return error
+
+    topic = (
+        Topic.objects
+        .filter(topic_id=topic_id)
+        .values("topic_id", "title", "created_by_user__login", "created_at")
+        .first()
+    )
+    if topic is None:
+        return JsonResponse({"error": "topic not found"}, status=404)
+
+    return JsonResponse(topic, status=200)
