@@ -38,6 +38,9 @@ class Message(models.Model):
     # fields
     message_id = models.AutoField(primary_key=True, db_column="message_id")
     t = models.TextField(db_column="t")
+    # Файл к сообщению и его имя. Без файла оба NULL, с файлом оба заполнены
+    attachment = models.BinaryField(null=True, default=None, db_column="attachment")
+    attachment_name = models.CharField(max_length=255, null=True, default=None, db_column="attachment_name")
     created_at = models.DateTimeField(db_default=Now(), db_column="created_at")
     # objects
     parent_message = models.ForeignKey("self", to_field="message_id", null=True, default=None, on_delete=models.CASCADE, db_column="parent_message_id")

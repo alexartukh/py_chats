@@ -28,6 +28,8 @@ CREATE TABLE messages (
     topic_id   INT NOT NULL REFERENCES topics(topic_id) ON DELETE CASCADE,
     user_id    INT NOT NULL REFERENCES users(user_id),
     t       TEXT NOT NULL,
+    attachment BYTEA NULL DEFAULT NULL,
+    attachment_name VARCHAR(255) NULL DEFAULT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
