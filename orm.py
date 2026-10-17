@@ -6,6 +6,7 @@ class User(models.Model):
     # fields
     user_id = models.AutoField(primary_key=True, db_column="user_id")
     login = models.CharField(max_length=255, unique=True, db_column="login")
+    email = models.CharField(max_length=255, unique=True, db_column="email")
     password = models.CharField(max_length=255, db_column="password")
     created_at = models.DateTimeField(db_default=Now(), db_column="created_at")
     last_login_at = models.DateTimeField(null=True, default=None, db_column="last_login_at")

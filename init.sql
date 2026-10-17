@@ -1,14 +1,15 @@
 CREATE TABLE users (
     user_id         INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     login      VARCHAR(255) NOT NULL UNIQUE,
+    email      VARCHAR(255) NOT NULL UNIQUE,
     password   VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_login_at TIMESTAMPTZ NULL DEFAULT NULL,
     last_message_at TIMESTAMPTZ NULL DEFAULT NULL
 );
-INSERT INTO users (login, password) VALUES ('test', '123');
-INSERT INTO users (login, password) VALUES ('alex', '123');
-INSERT INTO users (login, password) VALUES ('denis', '123');
+INSERT INTO users (login, email, password) VALUES ('test', 'test@example.com', '123');
+INSERT INTO users (login, email, password) VALUES ('alex', 'alex@example.com', '123');
+INSERT INTO users (login, email, password) VALUES ('denis', 'denis@example.com', '123');
 
 CREATE TABLE topics (
     topic_id         INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
