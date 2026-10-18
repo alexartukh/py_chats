@@ -51,12 +51,17 @@ settings.configure(
     # Слой каналов Channels - через него соединения получают групповые рассылки (group_send).
     # Хранится в Redis, поэтому работает и при нескольких процессах сервера.
     # protocol=2 - протокол RESP2, см. REDIS_PROTOCOL в online.py
+    # socket_timeout=15 - сколько секунд ждать ответа Redis. Должно быть БОЛЬШЕ 5:
+    #   channels_redis ждёт сообщения командой BZPOPMIN с тайм-аутом 5 секунд (brpop_timeout),
+    #   а redis-py 8.x по умолчанию тоже обрывает чтение через 5 секунд (DEFAULT_SOCKET_TIMEOUT).
+    #   При равных значениях чтение иногда обрывается раньше ответа Redis -> TimeoutError,
+    #   WebSocket-соединение закрывается каждые несколько секунд простоя.
     CHANNEL_LAYERS={
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
                 "hosts": [
-                    {"address": os.environ["REDIS_URL"], "protocol": 2},
+                    {"address": os.environ["REDIS_URL"], "protocol": 2, "socket_timeout": 15},
                 ],
             },
         },
@@ -91,33 +96,39 @@ settings.configure(
 )
 django.setup()
 
-# View-функции импортируются только после django.setup()
-from views.users import get_users, create_new_user, login, logout
-from views.topics import get_topics, create_new_topic, get_topic
-from views.messages import messages, create_new_message, delete_existing_message, get_all_root_messages
+# View-классы импортируются только после django.setup()
+from views.users import UsersApi
+from views.topics import TopicsApi
+from views.messages import MessagesApi
 from CAPTCHA import get_captcha
 from online import OnlineConsumer, reset_online_users
 
+# По одному объекту на группу endpoint-ов. Маршруты ниже указывают на их методы:
+# Django вызывает метод как обычную view-функцию, например users_api.get_users(request)
+users_api = UsersApi()
+topics_api = TopicsApi()
+messages_api = MessagesApi()
+
 urlpatterns = [
-    # users    
-    path("api/users", get_users),
-    path("api/create_new_user", create_new_user),
-    path("api/login", login),
-    path("api/logout", logout),
+    # users
+    path("api/users", users_api.get_users),
+    path("api/create_new_user", users_api.create_new_user),
+    path("api/login", users_api.login),
+    path("api/logout", users_api.logout),
     # topics
-    path("api/topics", get_topics),
-    path("api/create_new_topic", create_new_topic),
-    path("api/topic", get_topic),
+    path("api/topics", topics_api.get_topics),
+    path("api/create_new_topic", topics_api.create_new_topic),
+    path("api/topic", topics_api.get_topic),
     # messages
-    path("api/messages", messages),
-    path("api/create_new_message", create_new_message),
-    path("api/delete_existing_message", delete_existing_message),
-    path("api/get_all_root_messages", get_all_root_messages),
+    path("api/messages", messages_api.messages),
+    path("api/create_new_message", messages_api.create_new_message),
+    path("api/delete_existing_message", messages_api.delete_existing_message),
+    path("api/get_all_root_messages", messages_api.get_all_root_messages),
     # captcha
     path("api/captcha", get_captcha),
 ]
 
-# WebSocket-адреса. Отдельно от urlpatterns: те обслуживают только HTTP
+# WebSocket-адреса (1 шт). Отдельно от urlpatterns: те обслуживают только HTTP
 websocket_urlpatterns = [
     path("ws/online", OnlineConsumer.as_asgi()),
 ]
