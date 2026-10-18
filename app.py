@@ -3,7 +3,9 @@ import sys
 from urllib.parse import urlparse
 
 import django
+from channels.routing import ProtocolTypeRouter, URLRouter
 from django.apps import AppConfig
+from django.core.asgi import get_asgi_application
 from django.conf import settings
 from django.core.management import execute_from_command_line
 from django.urls import path
@@ -39,7 +41,26 @@ settings.configure(
     ALLOWED_HOSTS=allowed_hosts,
     ROOT_URLCONF=__name__,
     SECRET_KEY=os.environ["DJANGO_SECRET_KEY"],
-    INSTALLED_APPS=["__main__.OrmConfig", "corsheaders"],
+    # daphne должен стоять первым: он ПОДМЕНЯЕТ команду runserver.
+    #   С ним "python app.py runserver" запускает ASGI-сервер Daphne, который обслуживает
+    #   и обычные HTTP-запросы, и WebSocket. Без него runserver умеет только HTTP.
+    # channels - Django Channels, WebSocket-обработчики (см. online.py)
+    INSTALLED_APPS=["daphne", "__main__.OrmConfig", "corsheaders", "channels"],
+    # Точка входа ASGI для Daphne: объект application ниже в этом файле
+    ASGI_APPLICATION="__main__.application",
+    # Слой каналов Channels - через него соединения получают групповые рассылки (group_send).
+    # Хранится в Redis, поэтому работает и при нескольких процессах сервера.
+    # protocol=2 - протокол RESP2, см. REDIS_PROTOCOL в online.py
+    CHANNEL_LAYERS={
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [
+                    {"address": os.environ["REDIS_URL"], "protocol": 2},
+                ],
+            },
+        },
+    },
     # Порядок важен: middleware выполняются сверху вниз для запроса и снизу вверх для ответа.
     # CorsMiddleware - пакет django-cors-headers. Сама добавляет заголовки Access-Control-*
     #   ко всем ответам и сама отвечает на предварительные запросы OPTIONS от браузера.
@@ -75,6 +96,7 @@ from views.users import get_users, create_new_user, login, logout
 from views.topics import get_topics, create_new_topic, get_topic
 from views.messages import messages, create_new_message, delete_existing_message, get_all_root_messages
 from CAPTCHA import get_captcha
+from online import OnlineConsumer, reset_online_users
 
 urlpatterns = [
     # users    
@@ -94,5 +116,23 @@ urlpatterns = [
     # captcha
     path("api/captcha", get_captcha),
 ]
+
+# WebSocket-адреса. Отдельно от urlpatterns: те обслуживают только HTTP
+websocket_urlpatterns = [
+    path("ws/online", OnlineConsumer.as_asgi()),
+]
+
+# ASGI-приложение: HTTP-запросы идут в обычный Django (urlpatterns выше), WebSocket - в websocket_urlpatterns
+application = ProtocolTypeRouter({
+    "http": get_asgi_application(),
+    "websocket": URLRouter(websocket_urlpatterns),
+})
+
+# Список онлайн сбрасывается только при запуске сервера, а не при других командах (check, shell и т.д.):
+# иначе, например, "python app.py shell" стёр бы список у уже работающего сервера.
+# Подробности - у reset_online_users в online.py
+if len(sys.argv) > 1 and sys.argv[1] == "runserver":
+    reset_online_users()
+
 
 execute_from_command_line(sys.argv)
